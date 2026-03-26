@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fringe — Chromatic Effect Editor</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0c0c0c;
+      --surface: #141414;
+      --surface-2: #1e1e1e;
+      --border: #282828;
+      --text: #e8e8e8;
+      --text-muted: #666;
+      --accent: #a855f7;
+      --r: 10px;
+    }
+
+    html, body { height: 100%; overflow: hidden; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 14px;
+      display: flex;
+    }
+
+    /* ── Canvas area ── */
+    #canvas-area {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+      overflow: hidden;
+      position: relative;
+      background:
+        radial-gradient(ellipse at 20% 80%, rgba(131,58,180,.06) 0%, transparent 60%),
+        radial-gradient(ellipse at 80% 20%, rgba(253,29,29,.04) 0%, transparent 60%),
+        var(--bg);
+    }
+
+    /* ── Upload zone ── */
+    #upload-zone {
+      width: 100%;
+      max-width: 560px;
+      aspect-ratio: 4 / 3;
+      border: 1.5px dashed var(--border);
+      border-radius: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      gap: 14px;
+      color: var(--text-muted);
+      transition: all .2s;
+      text-align: center;
+      padding: 32px;
+      user-select: none;
+    }
+    #upload-zone:hover, #upload-zone.drag-over {
+      border-color: var(--accent);
+      color: var(--text);
+      background: rgba(168,85,247,.04);
+    }
+    #upload-zone .upload-icon { font-size: 40px; }
+    #upload-zone h3 { font-size: 16px; font-weight: 600; }
+    #upload-zone p { font-size: 13px; }
+    #file-input { display: none; }
+
+    /* ── Preview canvas ── */
+    #preview {
+      max-width: 100%;
+      max-height: 100%;
+      border-radius: 10px;
+      display: none;
+      box-shadow: 0 8px 40px rgba(0,0,0,.5);
+      image-rendering: -webkit-optimize-contrast;
+    }
+    #preview.visible { display: block; }
+
+    /* ── Processing overlay ── */
+    #processing-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,.65);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .2s;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    #processing-overlay.active { opacity: 1; pointer-events: all; }
+    .spinner {
+      width: 36px; height: 36px;
+      border: 3px solid #333;
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: 272px;
+      flex-shrink: 0;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 22px 18px;
+      gap: 0;
+      overflow-y: auto;
+    }
+
+    /* ── Brand ── */
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+    .brand-icon {
+      width: 34px; height: 34px;
+      background: linear-gradient(135deg, #833ab4, #fd1d1d, #fcb045);
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 17px;
+      flex-shrink: 0;
+    }
+    .brand-name { font-size: 16px; font-weight: 700; letter-spacing: -.3px; }
+    .brand-sub { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+
+    /* ── Controls ── */
+    .controls { display: flex; flex-direction: column; gap: 22px; flex: 1; }
+
+    .control { display: flex; flex-direction: column; gap: 9px; }
+
+    .control-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .control-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      color: var(--text-muted);
+    }
+    .control-value {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      background: var(--surface-2);
+      padding: 2px 7px;
+      border-radius: 5px;
+      min-width: 42px;
+      text-align: right;
+    }
+
+    /* Angle row */
+    .angle-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .angle-dial {
+      width: 38px; height: 38px;
+      flex-shrink: 0;
+      background: var(--surface-2);
+      border: 1.5px solid var(--border);
+      border-radius: 50%;
+      position: relative;
+    }
+    .angle-dial svg { width: 100%; height: 100%; display: block; }
+    .angle-row input[type=range] { flex: 1; }
+
+    /* Hue row */
+    .hue-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .hue-swatch {
+      width: 22px; height: 22px;
+      border-radius: 6px;
+      flex-shrink: 0;
+      border: 1.5px solid rgba(255,255,255,.12);
+      transition: background .1s;
+    }
+    .hue-row input[type=range] { flex: 1; }
+
+    /* Sliders */
+    input[type=range] {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 4px;
+      border-radius: 99px;
+      background: var(--surface-2);
+      outline: none;
+      cursor: pointer;
+      width: 100%;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      background: #fff;
+      cursor: pointer;
+      box-shadow: 0 1px 5px rgba(0,0,0,.5);
+      transition: transform .15s;
+    }
+    input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.25); }
+
+    #hue-range {
+      background: linear-gradient(to right,
+        hsl(0,100%,50%), hsl(30,100%,50%), hsl(60,100%,50%),
+        hsl(90,100%,50%), hsl(120,100%,50%), hsl(150,100%,50%),
+        hsl(180,100%,50%), hsl(210,100%,50%), hsl(240,100%,50%),
+        hsl(270,100%,50%), hsl(300,100%,50%), hsl(330,100%,50%),
+        hsl(360,100%,50%));
+    }
+
+    /* Divider */
+    .divider { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
+
+    /* Buttons */
+    .actions { display: flex; flex-direction: column; gap: 8px; margin-top: 24px; }
+
+    .btn {
+      padding: 10px 14px;
+      border: none;
+      border-radius: var(--r);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      width: 100%;
+      user-select: none;
+    }
+    .btn:active:not(:disabled) { transform: scale(.97); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+
+    .btn-save {
+      background: linear-gradient(135deg, #833ab4, #fd1d1d);
+      color: white;
+    }
+    .btn-save:hover:not(:disabled) { filter: brightness(1.1); }
+
+    .btn-compare {
+      background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-compare:hover:not(:disabled) { background: var(--border); }
+    .btn-compare.active { background: var(--border); }
+
+    .btn-new {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      font-size: 12px;
+    }
+    .btn-new:hover { color: var(--text); border-color: #444; }
+
+    .compare-hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    /* No-image controls dim */
+    .controls.inactive { opacity: .3; pointer-events: none; }
+  </style>
+</head>
+<body>
+
+  <!-- Canvas / upload area -->
+  <div id="canvas-area">
+    <div id="upload-zone">
+      <div class="upload-icon">✦</div>
+      <h3>Drop an image here</h3>
+      <p>or click to browse your files</p>
+      <input type="file" id="file-input" accept="image/*" />
+    </div>
+    <canvas id="preview"></canvas>
+    <div id="processing-overlay">
+      <div class="spinner"></div>
+      <span>Processing full resolution…</span>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-icon">⚡</div>
+      <div>
+        <div class="brand-name">Fringe</div>
+        <div class="brand-sub">Chromatic Effect Editor</div>
+      </div>
+    </div>
+
+    <div class="controls inactive" id="controls">
+
+      <!-- Angle -->
+      <div class="control">
+        <div class="control-header">
+          <span class="control-label">Angle</span>
+          <span class="control-value" id="angle-val">0°</span>
+        </div>
+        <div class="angle-row">
+          <div class="angle-dial">
+            <svg viewBox="0 0 38 38" fill="none">
+              <circle cx="19" cy="19" r="17" stroke="#2a2a2a" stroke-width="1.5"/>
+              <line id="dial-line" x1="19" y1="19" x2="32" y2="19"
+                    stroke="white" stroke-width="2" stroke-linecap="round"/>
+              <circle cx="19" cy="19" r="2.5" fill="#a855f7"/>
+            </svg>
+          </div>
+          <input type="range" id="angle-range" min="0" max="360" value="0" step="1" />
+        </div>
+      </div>
+
+      <!-- Hue -->
+      <div class="control">
+        <div class="control-header">
+          <span class="control-label">Hue</span>
+          <span class="control-value" id="hue-val">0°</span>
+        </div>
+        <div class="hue-row">
+          <div class="hue-swatch" id="hue-swatch"></div>
+          <input type="range" id="hue-range" min="0" max="360" value="0" step="1" />
+        </div>
+      </div>
+
+      <!-- Intensity -->
+      <div class="control">
+        <div class="control-header">
+          <span class="control-label">Intensity</span>
+          <span class="control-value" id="intensity-val">0 px</span>
+        </div>
+        <input type="range" id="intensity-range" min="0" max="50" value="10" step="1" />
+      </div>
+
+    </div><!-- /controls -->
+
+    <div class="actions">
+      <button class="btn btn-save" id="save-btn" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+        </svg>
+        Save Image
+      </button>
+      <button class="btn btn-compare" id="compare-btn" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+          <path d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/>
+        </svg>
+        Hold to Compare
+      </button>
+      <button class="btn btn-new" id="new-btn">
+        + Load new image
+      </button>
+    </div>
+  </aside>
+
+<script>
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+const uploadZone     = document.getElementById('upload-zone');
+const fileInput      = document.getElementById('file-input');
+const previewCanvas  = document.getElementById('preview');
+const ctx            = previewCanvas.getContext('2d', { willReadFrequently: true });
+const processingOvl  = document.getElementById('processing-overlay');
+const controlsEl     = document.getElementById('controls');
+
+const angleRange     = document.getElementById('angle-range');
+const hueRange       = document.getElementById('hue-range');
+const intensityRange = document.getElementById('intensity-range');
+const angleVal       = document.getElementById('angle-val');
+const hueVal         = document.getElementById('hue-val');
+const intensityVal   = document.getElementById('intensity-val');
+const hueSwatch      = document.getElementById('hue-swatch');
+const dialLine       = document.getElementById('dial-line');
+
+const saveBtn        = document.getElementById('save-btn');
+const compareBtn     = document.getElementById('compare-btn');
+const newBtn         = document.getElementById('new-btn');
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let originalImage    = null;   // HTMLImageElement (full res)
+let displayImageData = null;   // ImageData at canvas display resolution
+let renderTimer      = null;
+let comparing        = false;
+
+// ── Upload ────────────────────────────────────────────────────────────────────
+uploadZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => { if (e.target.files[0]) loadImage(e.target.files[0]); });
+
+uploadZone.addEventListener('dragover',  e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) loadImage(e.dataTransfer.files[0]);
+});
+
+function loadImage(file) {
+  if (!file.type.startsWith('image/')) return;
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    originalImage = img;
+    URL.revokeObjectURL(url);
+
+    const area     = document.getElementById('canvas-area');
+    const maxW     = area.clientWidth  - 64;
+    const maxH     = area.clientHeight - 64;
+    const scale    = Math.min(1, maxW / img.naturalWidth, maxH / img.naturalHeight);
+    const w        = Math.round(img.naturalWidth  * scale);
+    const h        = Math.round(img.naturalHeight * scale);
+
+    previewCanvas.width  = w;
+    previewCanvas.height = h;
+    ctx.drawImage(img, 0, 0, w, h);
+    displayImageData = ctx.getImageData(0, 0, w, h);
+
+    uploadZone.style.display = 'none';
+    previewCanvas.classList.add('visible');
+    controlsEl.classList.remove('inactive');
+    saveBtn.disabled    = false;
+    compareBtn.disabled = false;
+
+    scheduleRender();
+  };
+  img.src = url;
+}
+
+// ── Sliders ───────────────────────────────────────────────────────────────────
+angleRange.addEventListener('input',     () => { syncAngleUI(+angleRange.value);     scheduleRender(); });
+hueRange.addEventListener('input',       () => { syncHueUI(+hueRange.value);         scheduleRender(); });
+intensityRange.addEventListener('input', () => { syncIntensityUI(+intensityRange.value); scheduleRender(); });
+
+function syncAngleUI(a) {
+  angleVal.textContent = a + '°';
+  const rad = a * Math.PI / 180;
+  const r = 13;
+  dialLine.setAttribute('x2', (19 + Math.cos(rad) * r).toFixed(2));
+  dialLine.setAttribute('y2', (19 + Math.sin(rad) * r).toFixed(2));
+}
+
+function syncHueUI(h) {
+  hueVal.textContent = h + '°';
+  hueSwatch.style.background = `hsl(${h},100%,50%)`;
+}
+
+function syncIntensityUI(v) {
+  intensityVal.textContent = v + ' px';
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function scheduleRender() {
+  if (!displayImageData) return;
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(renderPreview, 60);
+}
+
+function renderPreview() {
+  if (!displayImageData || comparing) return;
+  const intensity = +intensityRange.value;
+  if (intensity === 0) {
+    ctx.putImageData(displayImageData, 0, 0);
+    return;
+  }
+  const result = processImageData(displayImageData, +angleRange.value, intensity, +hueRange.value);
+  ctx.putImageData(result, 0, 0);
+}
+
+// ── Core effect ───────────────────────────────────────────────────────────────
+/**
+ * Converts HSL (0–1 range each) to [r, g, b] (0–1 range each).
+ */
+function hslToRgb(h, s, l) {
+  if (s === 0) return [l, l, l];
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const hue2rgb = (p, q, t) => {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1/6) return p + (q - p) * 6 * t;
+    if (t < 1/2) return q;
+    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+    return p;
+  };
+  return [hue2rgb(p, q, h + 1/3), hue2rgb(p, q, h), hue2rgb(p, q, h - 1/3)];
+}
+
+/**
+ * Chromatic fringing — 4-overlay composite:
+ *
+ *   Layer 1  Red channel sampled from position shifted in the R direction
+ *   Layer 2  Green channel sampled from position shifted in the G direction
+ *   Layer 3  Blue channel sampled from position shifted in the B direction
+ *   Layer 4  Original image, always anchored at (x, y)  ← the stable base
+ *
+ *   Each output channel is lerp(original, shifted, t) where t = intensity/50.
+ *   This means the original image is always present as the base layer;
+ *   the three colour overlays blend in progressively as intensity increases.
+ *
+ *   The per-channel shift direction comes from the chosen hue colour, with the
+ *   mean offset subtracted so no net translation occurs at any intensity level.
+ */
+function processImageData(src, angle, intensity, hue) {
+  const w = src.width, h = src.height;
+  const s = src.data;
+  const out = new ImageData(w, h);
+  const d = out.data;
+
+  const rad = angle * Math.PI / 180;
+  const dx  = Math.cos(rad) * intensity;
+  const dy  = Math.sin(rad) * intensity;
+
+  // fringe colour as 0–1 per channel
+  const [fr, fg, fb] = hslToRgb(hue / 360, 1, 0.5);
+  // raw channel offset factors in [-1, +1]
+  const rawCf = [fr * 2 - 1, fg * 2 - 1, fb * 2 - 1];
+  // subtract the mean so the net shift across all channels is zero
+  const mean = (rawCf[0] + rawCf[1] + rawCf[2]) / 3;
+  const cf   = rawCf.map(c => c - mean);
+
+  // blend factor: 0 = 100% original (layer 4 only), 1 = 100% shifted layers
+  const t = intensity / 50;
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+
+      for (let ch = 0; ch < 3; ch++) {
+        const sx = x + dx * cf[ch];
+        const sy = y + dy * cf[ch];
+
+        // Bilinear interpolation with edge clamp
+        const x0 = Math.max(0, Math.min(w - 1, sx | 0));
+        const y0 = Math.max(0, Math.min(h - 1, sy | 0));
+        const x1 = Math.min(x0 + 1, w - 1);
+        const y1 = Math.min(y0 + 1, h - 1);
+        const fx = sx - (sx | 0);
+        const fy = sy - (sy | 0);
+
+        const shifted =
+          s[(y0 * w + x0) * 4 + ch] * (1 - fx) * (1 - fy) +
+          s[(y0 * w + x1) * 4 + ch] *      fx  * (1 - fy) +
+          s[(y1 * w + x0) * 4 + ch] * (1 - fx) *      fy  +
+          s[(y1 * w + x1) * 4 + ch] *      fx  *      fy;
+
+        // Layer 4 (original) blended with the shifted colour layer
+        d[i + ch] = s[i + ch] * (1 - t) + shifted * t;
+      }
+      d[i + 3] = s[i + 3]; // keep original alpha
+    }
+  }
+  return out;
+}
+
+// ── Save (full resolution) ────────────────────────────────────────────────────
+saveBtn.addEventListener('click', () => {
+  if (!originalImage) return;
+  processingOvl.classList.add('active');
+
+  setTimeout(() => {
+    const fw = originalImage.naturalWidth;
+    const fh = originalImage.naturalHeight;
+
+    const off = document.createElement('canvas');
+    off.width  = fw;
+    off.height = fh;
+    const octx = off.getContext('2d', { willReadFrequently: true });
+    octx.drawImage(originalImage, 0, 0);
+
+    const fullData  = octx.getImageData(0, 0, fw, fh);
+    const scale     = fw / previewCanvas.width;
+    const intensity = +intensityRange.value * scale;
+
+    const result = processImageData(fullData, +angleRange.value, intensity, +hueRange.value);
+    octx.putImageData(result, 0, 0);
+
+    const a = document.createElement('a');
+    a.download = 'fringe_' + Date.now() + '.png';
+    a.href     = off.toDataURL('image/png');
+    a.click();
+
+    processingOvl.classList.remove('active');
+  }, 32);
+});
+
+// ── Compare (hold to see original) ───────────────────────────────────────────
+function startCompare() {
+  if (!displayImageData) return;
+  comparing = true;
+  compareBtn.classList.add('active');
+  clearTimeout(renderTimer);
+  ctx.putImageData(displayImageData, 0, 0);
+}
+function endCompare() {
+  comparing = false;
+  compareBtn.classList.remove('active');
+  renderPreview();
+}
+
+compareBtn.addEventListener('mousedown',  startCompare);
+compareBtn.addEventListener('touchstart', startCompare, { passive: true });
+compareBtn.addEventListener('mouseup',    endCompare);
+compareBtn.addEventListener('mouseleave', endCompare);
+compareBtn.addEventListener('touchend',   endCompare);
+
+// Space bar shortcut
+document.addEventListener('keydown', e => { if (e.code === 'Space' && !e.repeat && originalImage) { e.preventDefault(); startCompare(); } });
+document.addEventListener('keyup',   e => { if (e.code === 'Space') endCompare(); });
+
+// ── New image ─────────────────────────────────────────────────────────────────
+newBtn.addEventListener('click', () => {
+  originalImage    = null;
+  displayImageData = null;
+  previewCanvas.classList.remove('visible');
+  uploadZone.style.display = '';
+  controlsEl.classList.add('inactive');
+  saveBtn.disabled    = true;
+  compareBtn.disabled = true;
+  fileInput.value = '';
+  angleRange.value     = 0;
+  hueRange.value       = 0;
+  intensityRange.value = 10;
+  syncAngleUI(0);
+  syncHueUI(0);
+  syncIntensityUI(10);
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+syncAngleUI(0);
+syncHueUI(0);
+syncIntensityUI(+intensityRange.value);
+</script>
+</body>
+</html>
