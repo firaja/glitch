@@ -46,28 +46,3 @@ It is useful for designers, artists, content creators, and developers who want f
 2. Adjust glitch and chromatic aberration settings
 3. Preview the output
 4. Export the final image
-
-## Tech Stack
-
-- HTML
-- CSS
-- JavaScript
-- Canvas / WebGL / Web Workers (update as needed)
-
-## SEO Notes
-
-This project targets searches related to:
-
-- glitch image effect
-- chromatic aberration image tool
-- RGB split image editor
-- online glitch photo editor
-- VHS image effect online
-
-## Installation
-
-```bash
-git clone https://github.com/yourname/glitch-tool.git
-cd glitch-tool
-npm install
-npm run dev
